@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Sun, Moon, Home, Users, Swords, Plus } from "lucide-react";
+import { Sun, Moon, Home, Users, Swords, Plus, Trophy } from "lucide-react";
 import { loadState, saveState, generateBracket, advanceBracket, getBracketWinner, unsetBracketWinnerCascade } from "./store";
 import type { AppState, Tournament, RRResults } from "./store";
 import { fetchSprite } from "./components/PokemonPicker";
@@ -11,7 +11,9 @@ import { NewTournamentModal } from "./pages/NewTournamentModal";
 import { RoundRobinPage }     from "./pages/RoundRobinPage";
 import { BracketPage }        from "./pages/BracketPage";
 
-type Tab = "guild" | "players" | "tournament";
+import { HallOfFamePage } from "./pages/HallOfFamePage";
+
+type Tab = "guild" | "players" | "tournament" | "hall";
 
 const PokeballBg = () => (
   <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg"
@@ -242,6 +244,7 @@ export default function App() {
   const TABS: { key: Tab; icon: React.ReactNode; label: string }[] = [
     { key: "guild",      icon: <Home size={18}/>,   label: "Guilda" },
     { key: "players",    icon: <Users size={18}/>,  label: "Treinadores" },
+    { key: "hall",       icon: <Trophy size={18}/>, label: "Hall da Fama" },
     { key: "tournament", icon: <Swords size={18}/>, label: activeTournament ? activeTournament.name : "Torneio" },
   ];
 
@@ -283,7 +286,9 @@ export default function App() {
           </header>
 
           {/* Passando o resetSeason para a GuildPage */}
+
           {tab === "guild"      && <GuildPage state={state} dark={dark} onUpdateGuild={updateGuild} onSetActive={id => { setState(s => ({ ...s, activeTournamentId: id })); setTab("tournament"); }} onNewTournament={() => setShowModal(true)} onDeleteTournament={deleteTournament} onResetSeason={resetSeason} />}
+          {tab === "hall" && <HallOfFamePage state={state} dark={dark} />}
           {tab === "players"    && <PlayersPage players={state.players} dark={dark} onAdd={addPlayer} onRemove={removePlayer} onEdit={editPlayer} />}
           {tab === "tournament" && !activeTournament && (
             <div style={{ textAlign: "center", padding: "60px 20px" }}>
