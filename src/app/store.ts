@@ -4,25 +4,22 @@ export type Player = {
   id: string;
   nick: string;
   pokeId: number;
-  // lifetime stats (updated when tournament is finished)
   totalWins: number;
   totalLosses: number;
   titles: number;
 };
 
-export type MatchResult = "A" | "B" | null; // A = player A won, B = player B won
+export type MatchResult = "A" | "B" | null;
 
-// Round Robin
 export type RRResults = {
   [playerId: string]: { [opponentId: string]: "V" | "D" | null };
 };
 
-// Bracket
 export type BracketMatch = {
   id: string;
   round: number;
   position: number;
-  playerAId: string | null; // null = TBD
+  playerAId: string | null;
   playerBId: string | null;
   winnerId: string | null;
   loserId: string | null;
@@ -36,12 +33,9 @@ export type Tournament = {
   status: "active" | "finished";
   createdAt: string;
   finishedAt?: string;
-  // Round Robin data
   rrResults?: RRResults;
-  // Bracket data
   bracketMatches?: BracketMatch[];
   bracketSize?: number;
-  // snapshot of player nicks at tournament time
   playerSnap?: { id: string; nick: string; pokeId: number }[];
 };
 
@@ -108,18 +102,24 @@ export function generateBracket(playerIds: string[]): BracketMatch[] {
   const rounds = Math.log2(size);
   const matches: BracketMatch[] = [];
   const shuffled = [...playerIds].sort(() => Math.random() - 0.5);
-  // pad with byes
-  while (shuffled.length < size) shuffled.push("BYE");
 
-  // Round 1
+  // Distribuir BYEs de forma inteligente: evita que jogadores enfrentem BYEs seguidos
+  const slots = new Array(size).fill(null);
+  let pIdx = 0;
+  // Preenche primeiro o Jogador A de cada luta
+  for (let i = 0; i < size; i += 2) { if (pIdx < shuffled.length) slots[i] = shuffled[pIdx++]; }
+  // Preenche o Jogador B com quem sobrou (os espaços vazios viram BYEs)
+  for (let i = 1; i < size; i += 2) { if (pIdx < shuffled.length) slots[i] = shuffled[pIdx++]; }
+
+  // Criar Round 1
   for (let i = 0; i < size / 2; i++) {
-    const pA = shuffled[i * 2] === "BYE" ? null : shuffled[i * 2];
-    const pB = shuffled[i * 2 + 1] === "BYE" ? null : shuffled[i * 2 + 1];
-    const winnerId = pA === null ? pB : pB === null ? pA : null;
+    const pA = slots[i * 2];
+    const pB = slots[i * 2 + 1];
+    const winnerId = pA === null ? pB : pB === null ? pA : null; // Se um lado for null, o outro ganha automático
     matches.push({ id: `r1-${i}`, round: 1, position: i, playerAId: pA, playerBId: pB, winnerId, loserId: null });
   }
 
-  // Remaining rounds (TBD)
+  // Criar demais Rounds
   for (let r = 2; r <= rounds; r++) {
     const matchesInRound = size / Math.pow(2, r);
     for (let i = 0; i < matchesInRound; i++) {
@@ -127,7 +127,26 @@ export function generateBracket(playerIds: string[]): BracketMatch[] {
     }
   }
 
+  // Mágica: Empurrar os vencedores de BYE do Round 1 direto para o Round 2
+  const r1Matches = matches.filter(m => m.round === 1);
+  for (const m of r1Matches) {
+    if (m.winnerId) {
+      const nextRound = 2;
+      const nextPosition = Math.floor(m.position / 2);
+      const nextMatch = matches.find(nm => nm.round === nextRound && nm.position === nextPosition);
+      if (nextMatch) {
+        if (m.position % 2 === 0) nextMatch.playerAId = m.winnerId;
+        else nextMatch.playerBId = m.winnerId;
+        
+        // Se ambos caírem de BYE, avança de novo
+        if (nextMatch.playerAId && nextMatch.playerBId === null) { nextMatch.winnerId = nextMatch.playerAId; }
+        else if (nextMatch.playerBId && nextMatch.playerAId === null) { nextMatch.winnerId = nextMatch.playerBId; }
+      }
+    }
+  }
+
   return matches;
+
 }
 
 export function advanceBracket(matches: BracketMatch[], matchId: string, winnerId: string): BracketMatch[] {
@@ -139,18 +158,54 @@ export function advanceBracket(matches: BracketMatch[], matchId: string, winnerI
   match.winnerId = winnerId;
   match.loserId = loserId;
 
-  // Find next match
+  // Encontra a próxima luta do chaveamento
   const nextRound = match.round + 1;
   const nextPosition = Math.floor(match.position / 2);
   const nextMatch = updated.find(m => m.round === nextRound && m.position === nextPosition);
+  
   if (nextMatch) {
     if (match.position % 2 === 0) nextMatch.playerAId = winnerId;
     else nextMatch.playerBId = winnerId;
-    // auto-advance if other slot is null (bye)
-    if (nextMatch.playerAId && nextMatch.playerBId === null) { nextMatch.winnerId = nextMatch.playerAId; }
-    if (nextMatch.playerBId && nextMatch.playerAId === null) { nextMatch.winnerId = nextMatch.playerBId; }
+    
+    // CORREÇÃO: Removemos as linhas que davam vitória automática prematura aqui!
   }
 
+  return updated;
+}
+
+/**
+ * Recursively clears a match result AND all downstream matches that depend on it.
+ * This ensures hierarchy: undoing R1 clears R2, R3, etc. that had that winner.
+ */
+export function unsetBracketWinnerCascade(matches: BracketMatch[], matchId: string): BracketMatch[] {
+  const updated = matches.map(m => ({ ...m }));
+
+  function clearMatch(id: string) {
+    const match = updated.find(m => m.id === id);
+    if (!match || !match.winnerId) return;
+
+    const prevWinnerId = match.winnerId;
+    match.winnerId = null;
+    match.loserId = null;
+
+    // Find next round match and clear there too
+    const nextRound = match.round + 1;
+    const nextPosition = Math.floor(match.position / 2);
+    const nextMatch = updated.find(m => m.round === nextRound && m.position === nextPosition);
+
+    if (nextMatch) {
+      // Only cascade if the winner from THIS match is present in the next match
+      if (nextMatch.playerAId === prevWinnerId || nextMatch.playerBId === prevWinnerId) {
+        // Clear the winner from next match's slots
+        if (nextMatch.playerAId === prevWinnerId) nextMatch.playerAId = null;
+        if (nextMatch.playerBId === prevWinnerId) nextMatch.playerBId = null;
+        // Recurse
+        clearMatch(nextMatch.id);
+      }
+    }
+  }
+
+  clearMatch(matchId);
   return updated;
 }
 

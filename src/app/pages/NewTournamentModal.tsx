@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Shuffle } from "lucide-react";
+import { X } from "lucide-react";
 import type { Player } from "../store";
 import { T, PokemonSprite, Btn } from "../components/Shared";
 
@@ -9,6 +9,9 @@ type Props = {
   onConfirm: (name: string, mode: "roundrobin" | "bracket", playerIds: string[]) => void;
   onClose: () => void;
 };
+
+// Função matemática rápida para checar se um número é 2, 4, 8, 16, 32, etc.
+const isPowerOfTwo = (n: number) => n > 0 && (n & (n - 1)) === 0;
 
 export function NewTournamentModal({ players, dark, onConfirm, onClose }: Props) {
   const [name, setName] = useState(`Torneio #${Math.floor(Math.random() * 900) + 100}`);
@@ -23,7 +26,14 @@ export function NewTournamentModal({ players, dark, onConfirm, onClose }: Props)
   const toggle = (id: string) => setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const allSel = selected.length === players.length;
 
-  const canCreate = name.trim() && selected.length >= 2;
+  // Lógica de validação alterada:
+  // Se for Round Robin, basta 2 jogadores. 
+  // Se for Bracket, precisa ser 2, 4, 8, 16, 32...
+  const canCreate = name.trim() && (
+    mode === "roundrobin" 
+      ? selected.length >= 2 
+      : (selected.length >= 2 && isPowerOfTwo(selected.length))
+  );
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
@@ -53,8 +63,8 @@ export function NewTournamentModal({ players, dark, onConfirm, onClose }: Props)
             <label style={{ color: muted, fontSize: "0.8rem", display: "block", marginBottom: "8px" }}>Formato</label>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               {([
-                { value: "roundrobin", icon: "🔄", title: "Round Robin", desc: "Todos jogam contra todos. Mais justo, mais partidas." },
-                { value: "bracket",    icon: "⚔️", title: "Chaveamento", desc: "Eliminatório. Perde e cai. Mais rápido e emocionante." },
+                { value: "roundrobin", icon: "🔄", title: "Round Robin", desc: "Todos jogam contra todos. Qualquer número de jogadores." },
+                { value: "bracket",    icon: "⚔️", title: "Chaveamento", desc: "Eliminatório. Requer exatamente 4, 8, 16 ou 32 treinadores." },
               ] as const).map(opt => (
                 <button key={opt.value} onClick={() => setMode(opt.value)}
                   style={{
@@ -103,14 +113,22 @@ export function NewTournamentModal({ players, dark, onConfirm, onClose }: Props)
             </div>
           </div>
 
-          {/* Info box */}
+          {/* Info box inteligente */}
           {mode === "bracket" && selected.length > 0 && (
-            <div style={{ background: dark ? "rgba(255,215,0,0.06)" : "rgba(204,0,0,0.05)", border: `1px solid ${border}`, borderRadius: "10px", padding: "10px 14px", fontSize: "0.8rem", color: muted }}>
-              ℹ️ Com {selected.length} treinadores o bracket terá {(() => { let p = 1; while (p < selected.length) p *= 2; return p; })()} slots. {(() => { let p = 1; while (p < selected.length) p *= 2; return p - selected.length; })()} jogadores receberão bye automático na primeira rodada.
+            <div style={{ 
+              background: isPowerOfTwo(selected.length) ? (dark ? "rgba(34,197,94,0.1)" : "rgba(34,197,94,0.08)") : (dark ? "rgba(239,68,68,0.1)" : "rgba(239,68,68,0.08)"), 
+              border: `1px solid ${isPowerOfTwo(selected.length) ? "rgba(34,197,94,0.5)" : "rgba(239,68,68,0.5)"}`, 
+              borderRadius: "10px", padding: "12px 14px", fontSize: "0.85rem", 
+              color: isPowerOfTwo(selected.length) ? "#22c55e" : "#ef4444",
+              fontWeight: 500, display: "flex", alignItems: "center", gap: "8px"
+            }}>
+              {isPowerOfTwo(selected.length) 
+                ? "✅ Perfeito! Quantidade exata para formar chaves completas."
+                : `⚠️ Chaveamento requer 4, 8, 16 ou 32 jogadores (Selecionados: ${selected.length}).`}
             </div>
           )}
 
-          <Btn onClick={() => canCreate && onConfirm(name.trim(), mode, selected)} disabled={!canCreate} style={{ width: "100%", justifyContent: "center", padding: "12px" }}>
+          <Btn onClick={() => canCreate && onConfirm(name.trim(), mode, selected)} disabled={!canCreate} style={{ width: "100%", justifyContent: "center", padding: "12px", opacity: canCreate ? 1 : 0.5, cursor: canCreate ? "pointer" : "not-allowed" }}>
             ⚔️ Criar Torneio
           </Btn>
         </div>

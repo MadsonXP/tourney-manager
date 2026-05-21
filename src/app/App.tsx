@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Sun, Moon, Home, Users, Swords, Plus } from "lucide-react";
-import { loadState, saveState, generateBracket, advanceBracket, getBracketWinner } from "./store";
+import { loadState, saveState, generateBracket, advanceBracket, getBracketWinner, unsetBracketWinnerCascade } from "./store";
 import type { AppState, Tournament, RRResults } from "./store";
 import { fetchSprite } from "./components/PokemonPicker";
 import { T } from "./components/Shared";
@@ -16,8 +16,8 @@ type Tab = "guild" | "players" | "tournament";
 // ─── Pokébola background ─────────────────────────────────────────────────────
 const PokeballBg = () => (
   <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg"
-    style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", zIndex: 0, opacity: 0.035, pointerEvents: "none" }}
-    preserveAspectRatio="xMidYMid slice">
+       style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", zIndex: 0, opacity: 0.035, pointerEvents: "none" }}
+       preserveAspectRatio="xMidYMid slice">
     <defs>
       <pattern id="pbg" x="0" y="0" width="160" height="160" patternUnits="userSpaceOnUse">
         <g transform="translate(80,80)">
@@ -124,24 +124,16 @@ export default function App() {
       ...s,
       tournaments: s.tournaments.map(t => {
         if (t.id !== activeTournament.id) return t;
-        const matches = (t.bracketMatches ?? []).map(m => ({ ...m }));
-        const match = matches.find(m => m.id === matchId);
-        if (!match || !match.winnerId) return t;
-        const prevWinnerId = match.winnerId;
-        match.winnerId = null;
-        match.loserId  = null;
-        // Remove winner from next match
-        const nextRound    = match.round + 1;
-        const nextPosition = Math.floor(match.position / 2);
-        const nextMatch    = matches.find(m => m.round === nextRound && m.position === nextPosition);
-        if (nextMatch) {
-          if (nextMatch.playerAId === prevWinnerId) nextMatch.playerAId = null;
-          if (nextMatch.playerBId === prevWinnerId) nextMatch.playerBId = null;
-          nextMatch.winnerId = null;
-          nextMatch.loserId  = null;
-        }
-        return { ...t, bracketMatches: matches };
+        return { ...t, bracketMatches: unsetBracketWinnerCascade(t.bracketMatches ?? [], matchId) };
       })
+    }));
+  };
+
+  const deleteTournament = (id: string) => {
+    setState(s => ({
+      ...s,
+      tournaments: s.tournaments.filter(t => t.id !== id),
+      activeTournamentId: s.activeTournamentId === id ? null : s.activeTournamentId,
     }));
   };
 
@@ -229,14 +221,14 @@ export default function App() {
               <button onClick={() => setShowModal(true)} style={{ background: "linear-gradient(135deg,#FFD700,#FF6B00)", border: "none", borderRadius: "10px", padding: "8px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", fontWeight: 700, color: "#1a1a1a", boxShadow: "0 2px 8px rgba(255,180,0,0.4)" }}>
                 <Plus size={15}/> Torneio
               </button>
-              <button onClick={() => setDark(d => !d)} style={{ width: 36, height: 36, borderRadius: "10px", background: "rgba(255,215,0,0.08)", border: "1px solid rgba(255,215,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", color: muted, cursor: "pointer" }}>
+              <button onClick={() => setDark((d: boolean) => !d)} style={{ width: 36, height: 36, borderRadius: "10px", background: "rgba(255,215,0,0.08)", border: "1px solid rgba(255,215,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", color: muted, cursor: "pointer" }}>
                 {dark ? <Sun size={16}/> : <Moon size={16}/>}
               </button>
             </div>
           </header>
 
           {/* Tab content */}
-          {tab === "guild"      && <GuildPage state={state} dark={dark} onUpdateGuild={updateGuild} onSetActive={id => { setState(s => ({ ...s, activeTournamentId: id })); setTab("tournament"); }} onNewTournament={() => setShowModal(true)} />}
+          {tab === "guild"      && <GuildPage state={state} dark={dark} onUpdateGuild={updateGuild} onSetActive={id => { setState(s => ({ ...s, activeTournamentId: id })); setTab("tournament"); }} onNewTournament={() => setShowModal(true)} onDeleteTournament={deleteTournament} />}
           {tab === "players"    && <PlayersPage players={state.players} dark={dark} onAdd={addPlayer} onRemove={removePlayer} onEdit={editPlayer} />}
           {tab === "tournament" && !activeTournament && (
             <div style={{ textAlign: "center", padding: "60px 20px" }}>

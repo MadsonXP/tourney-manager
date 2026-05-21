@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Pencil, Check, X, Plus, Trophy, Users, Swords } from "lucide-react";
+import { Pencil, Check, X, Plus, Trophy, Users, Swords, Trash2 } from "lucide-react";
 import type { AppState, Tournament } from "../store";
-import { T, SectionHeader, PokeballCorner, Btn } from "../components/Shared";
+import { T, SectionHeader, Btn } from "../components/Shared";
 
 type Props = {
   state: AppState;
@@ -9,9 +9,10 @@ type Props = {
   onUpdateGuild: (guild: AppState["guild"]) => void;
   onSetActive: (id: string) => void;
   onNewTournament: () => void;
+  onDeleteTournament: (id: string) => void;
 };
 
-function TournamentCard({ t, players, dark, onSetActive }: { t: Tournament; players: AppState["players"]; dark: boolean; onSetActive: () => void }) {
+function TournamentCard({ t, players, dark, onSetActive, onDelete }: { t: Tournament; players: AppState["players"]; dark: boolean; onSetActive: () => void; onDelete: () => void }) {
   const snap = t.playerSnap ?? [];
   const winner = t.status === "finished"
     ? (() => {
@@ -65,11 +66,18 @@ function TournamentCard({ t, players, dark, onSetActive }: { t: Tournament; play
       {t.status === "finished" && (
         <span style={{ color: muted, fontSize: "0.75rem", border: `1px solid ${T.border(dark)}`, borderRadius: "8px", padding: "4px 10px" }}>Encerrado</span>
       )}
+      <button
+        onClick={(e) => { e.stopPropagation(); if (confirm(`Excluir torneio "${t.name}"?`)) onDelete(); }}
+        title="Excluir torneio"
+        style={{ background: "none", border: `1px solid rgba(239,68,68,0.3)`, color: "rgba(239,68,68,0.7)", borderRadius: "8px", padding: "5px 8px", cursor: "pointer", display: "flex", alignItems: "center", flexShrink: 0 }}
+      >
+        <Trash2 size={13}/>
+      </button>
     </div>
   );
 }
 
-export function GuildPage({ state, dark, onUpdateGuild, onSetActive, onNewTournament }: Props) {
+export function GuildPage({ state, dark, onUpdateGuild, onSetActive, onNewTournament, onDeleteTournament }: Props) {
   const [editingGuild, setEditingGuild] = useState(false);
   const [draft, setDraft] = useState(state.guild);
   const accent = T.accent(dark);
@@ -163,7 +171,7 @@ export function GuildPage({ state, dark, onUpdateGuild, onSetActive, onNewTourna
               </button>
             </div>
           ) : active.map(t => (
-            <TournamentCard key={t.id} t={t} players={state.players} dark={dark} onSetActive={() => onSetActive(t.id)} />
+            <TournamentCard key={t.id} t={t} players={state.players} dark={dark} onSetActive={() => onSetActive(t.id)} onDelete={() => onDeleteTournament(t.id)} />
           ))}
         </div>
       </div>
@@ -174,7 +182,7 @@ export function GuildPage({ state, dark, onUpdateGuild, onSetActive, onNewTourna
           <SectionHeader icon="📜" title="Histórico" dark={dark} />
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
             {finished.slice().reverse().map(t => (
-              <TournamentCard key={t.id} t={t} players={state.players} dark={dark} onSetActive={() => {}} />
+              <TournamentCard key={t.id} t={t} players={state.players} dark={dark} onSetActive={() => {}} onDelete={() => onDeleteTournament(t.id)} />
             ))}
           </div>
         </div>
