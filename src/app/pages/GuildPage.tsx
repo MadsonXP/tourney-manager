@@ -1,192 +1,178 @@
-import { useState } from "react";
-import { Pencil, Check, X, Plus, Trophy, Users, Swords, Trash2 } from "lucide-react";
+import { useState, useRef } from "react";
+import { Pencil, Check, X, Plus, Trophy, Users, Swords, Trash2, Download, Upload, Medal } from "lucide-react";
 import type { AppState, Tournament } from "../store";
-import { T, SectionHeader, Btn } from "../components/Shared";
+import { T, SectionHeader, Btn, PokemonSprite } from "../components/Shared";
 
-type Props = {
-  state: AppState;
-  dark: boolean;
-  onUpdateGuild: (guild: AppState["guild"]) => void;
-  onSetActive: (id: string) => void;
-  onNewTournament: () => void;
-  onDeleteTournament: (id: string) => void;
+type Props = { 
+  state: AppState; 
+  dark: boolean; 
+  onUpdateGuild: (guild: AppState["guild"]) => void; 
+  onSetActive: (id: string) => void; 
+  onNewTournament: () => void; 
+  onDeleteTournament: (id: string) => void; 
+  onResetSeason: () => void; // NOVO: Propriedade recebida para zerar temporada
 };
 
 function TournamentCard({ t, players, dark, onSetActive, onDelete }: { t: Tournament; players: AppState["players"]; dark: boolean; onSetActive: () => void; onDelete: () => void }) {
   const snap = t.playerSnap ?? [];
-  const winner = t.status === "finished"
-    ? (() => {
-        if (t.mode === "roundrobin" && t.rrResults) {
-          const scores = t.playerIds.map(id => {
-            const r = t.rrResults![id] ?? {};
-            return { id, wins: Object.values(r).filter(v => v === "V").length };
-          });
-          scores.sort((a, b) => b.wins - a.wins);
-          const p = players.find(p => p.id === scores[0]?.id) ?? snap.find(p => p.id === scores[0]?.id);
-          return p?.nick ?? "—";
-        }
-        if (t.mode === "bracket" && t.bracketMatches) {
-          const maxR = Math.max(...t.bracketMatches.map(m => m.round));
-          const final = t.bracketMatches.find(m => m.round === maxR);
-          if (final?.winnerId) {
-            const p = players.find(p => p.id === final.winnerId) ?? snap.find(p => p.id === final.winnerId);
-            return p?.nick ?? "—";
-          }
-        }
-        return "—";
-      })()
-    : null;
-
-  const modeLabel = t.mode === "roundrobin" ? "Round Robin" : "Bracket";
-  const modeIcon  = t.mode === "roundrobin" ? "🔄" : "⚔️";
-  const accent = T.accent(dark);
-  const muted  = T.muted(dark);
-  const text   = T.text(dark);
+  const winner = t.status === "finished" ? (() => {
+    if (t.mode === "roundrobin" && t.rrResults) {
+      const scores = t.playerIds.map(id => ({ id, wins: Object.values(t.rrResults![id] ?? {}).filter(v => v === "V").length })).sort((a, b) => b.wins - a.wins);
+      return players.find(p => p.id === scores[0]?.id)?.nick ?? snap.find(p => p.id === scores[0]?.id)?.nick ?? "—";
+    }
+    if (t.mode === "bracket" && t.bracketMatches) {
+      const final = t.bracketMatches.find(m => m.round === Math.max(...t.bracketMatches!.map(x => x.round)));
+      return players.find(p => p.id === final?.winnerId)?.nick ?? snap.find(p => p.id === final?.winnerId)?.nick ?? "—";
+    }
+    return "—";
+  })() : null;
 
   return (
-    <div style={{
-      background: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
-      border: `1px solid ${T.border(dark)}`,
-      borderRadius: "14px", padding: "14px 16px",
-      display: "flex", alignItems: "center", gap: "14px"
-    }}>
+    <div style={{ background: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)", border: `1px solid ${T.border(dark)}`, borderRadius: "14px", padding: "14px 16px", display: "flex", alignItems: "center", gap: "14px" }}>
       <div style={{ fontSize: "1.6rem" }}>{t.status === "finished" ? "🏆" : "⚡"}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: text, fontWeight: 600, fontSize: "0.95rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-        <div style={{ color: muted, fontSize: "0.75rem", marginTop: "2px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
-          <span>{modeIcon} {modeLabel}</span>
+        <div style={{ color: T.text(dark), fontWeight: 600, fontSize: "0.95rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+        <div style={{ color: T.muted(dark), fontSize: "0.75rem", marginTop: "2px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          <span>{t.mode === "roundrobin" ? "🔄 Round Robin" : "⚔️ Bracket"}</span>
           <span>👥 {t.playerIds.length} treinadores</span>
-          <span>📅 {new Date(t.createdAt).toLocaleDateString("pt-BR")}</span>
           {winner && <span style={{ color: "#FFD700" }}>🥇 {winner}</span>}
         </div>
       </div>
-      {t.status === "active" && (
-        <Btn onClick={onSetActive} style={{ fontSize: "0.8rem", padding: "6px 12px" }}>Abrir</Btn>
-      )}
-      {t.status === "finished" && (
-        <span style={{ color: muted, fontSize: "0.75rem", border: `1px solid ${T.border(dark)}`, borderRadius: "8px", padding: "4px 10px" }}>Encerrado</span>
-      )}
-      <button
-        onClick={(e) => { e.stopPropagation(); if (confirm(`Excluir torneio "${t.name}"?`)) onDelete(); }}
-        title="Excluir torneio"
-        style={{ background: "none", border: `1px solid rgba(239,68,68,0.3)`, color: "rgba(239,68,68,0.7)", borderRadius: "8px", padding: "5px 8px", cursor: "pointer", display: "flex", alignItems: "center", flexShrink: 0 }}
-      >
-        <Trash2 size={13}/>
-      </button>
+      {t.status === "active" && <Btn onClick={onSetActive} style={{ fontSize: "0.8rem", padding: "6px 12px" }}>Abrir</Btn>}
+      <button onClick={(e) => { e.stopPropagation(); if (confirm(`Excluir torneio "${t.name}"?`)) onDelete(); }} style={{ background: "none", border: `1px solid rgba(239,68,68,0.3)`, color: "rgba(239,68,68,0.7)", borderRadius: "8px", padding: "5px 8px", cursor: "pointer", display: "flex", alignItems: "center", marginLeft: "8px" }}><Trash2 size={13}/></button>
     </div>
   );
 }
 
-export function GuildPage({ state, dark, onUpdateGuild, onSetActive, onNewTournament, onDeleteTournament }: Props) {
+export function GuildPage({ state, dark, onUpdateGuild, onSetActive, onNewTournament, onDeleteTournament, onResetSeason }: Props) {
   const [editingGuild, setEditingGuild] = useState(false);
   const [draft, setDraft] = useState(state.guild);
-  const accent = T.accent(dark);
-  const muted  = T.muted(dark);
-  const text   = T.text(dark);
-  const border = T.border(dark);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const active   = state.tournaments.filter(t => t.status === "active");
+  const active = state.tournaments.filter(t => t.status === "active");
   const finished = state.tournaments.filter(t => t.status === "finished");
+  
+  const ranking = [...state.players].sort((a, b) => (b.points || 0) - (a.points || 0));
 
-  const totalWins   = state.players.reduce((s, p) => s + p.totalWins, 0);
-  const totalTitles = state.players.reduce((s, p) => s + p.titles, 0);
+  const handleExport = () => {
+    const data = localStorage.getItem("tourney_v2_state");
+    if (!data) return;
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; 
+    a.download = `backup-guilda-${new Date().toISOString().slice(0,10)}.json`; 
+    a.click();
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const json = JSON.parse(evt.target?.result as string);
+        if (json && json.players && json.tournaments) {
+          localStorage.setItem("tourney_v2_state", JSON.stringify(json));
+          alert("Banco de dados atualizado! A página será recarregada.");
+          window.location.reload();
+        } else {
+          alert("Arquivo inválido.");
+        }
+      } catch { 
+        alert("Erro ao ler o arquivo."); 
+      }
+    };
+    reader.readAsText(file);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      
+      {/* Botões de Administração (Salvar/Carregar) */}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+        <input type="file" accept=".json" ref={fileInputRef} style={{ display: "none" }} onChange={handleImport} />
+        <button onClick={() => fileInputRef.current?.click()} style={{ background: "rgba(0,0,0,0.2)", border: `1px solid ${T.border(dark)}`, color: T.text(dark), padding: "6px 12px", borderRadius: "8px", fontSize: "0.75rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+          <Upload size={14}/> Carregar Dados
+        </button>
+        <button onClick={handleExport} style={{ background: "linear-gradient(135deg,#22c55e,#16a34a)", border: "none", color: "#fff", padding: "6px 12px", borderRadius: "8px", fontSize: "0.75rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+          <Download size={14}/> Salvar Backup
+        </button>
+      </div>
 
-      {/* Guild banner */}
+      {/* Card da Guilda */}
       <div style={{ ...T.card(dark), overflow: "hidden" }}>
         <div style={{ padding: "24px", background: dark ? "linear-gradient(135deg,rgba(255,215,0,0.08),rgba(255,100,0,0.05))" : "linear-gradient(135deg,rgba(204,0,0,0.07),rgba(255,150,0,0.05))" }}>
           {editingGuild ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
-                placeholder="Nome da guilda"
-                style={{ background: T.inputBg(dark), border: `1px solid ${border}`, color: text, borderRadius: "10px", padding: "8px 14px", fontSize: "1rem", outline: "none" }}
-              />
-              <input value={draft.motto} onChange={e => setDraft(d => ({ ...d, motto: e.target.value }))}
-                placeholder="Lema da guilda"
-                style={{ background: T.inputBg(dark), border: `1px solid ${border}`, color: text, borderRadius: "10px", padding: "8px 14px", fontSize: "0.9rem", outline: "none" }}
-              />
-              <textarea value={draft.announcement} onChange={e => setDraft(d => ({ ...d, announcement: e.target.value }))}
-                placeholder="📢 Aviso para os membros (opcional)..."
-                rows={2}
-                style={{ background: T.inputBg(dark), border: `1px solid ${border}`, color: text, borderRadius: "10px", padding: "8px 14px", fontSize: "0.85rem", outline: "none", resize: "vertical" }}
-              />
-              <div style={{ display: "flex", gap: "8px" }}>
-                <Btn onClick={() => { onUpdateGuild(draft); setEditingGuild(false); }}><Check size={14}/> Salvar</Btn>
-                <Btn variant="ghost" onClick={() => { setDraft(state.guild); setEditingGuild(false); }}><X size={14}/> Cancelar</Btn>
-              </div>
+              <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} style={{ background: T.inputBg(dark), border: `1px solid ${T.border(dark)}`, color: T.text(dark), borderRadius: "10px", padding: "8px 14px" }} />
+              <div style={{ display: "flex", gap: "8px" }}><Btn onClick={() => { onUpdateGuild(draft); setEditingGuild(false); }}><Check size={14}/> Salvar</Btn></div>
             </div>
           ) : (
-            <div>
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
-                <div>
-                  <h1 style={{ fontFamily: "'Bangers','Impact',cursive", fontSize: "2rem", letterSpacing: "0.06em", background: `linear-gradient(135deg,${accent},#FF6B00)`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", margin: "0 0 4px 0" }}>
-                    {state.guild.name}
-                  </h1>
-                  <p style={{ color: muted, fontSize: "0.9rem", margin: 0 }}>{state.guild.motto}</p>
-                </div>
-                <button onClick={() => { setDraft(state.guild); setEditingGuild(true); }}
-                  style={{ background: "none", border: `1px solid ${border}`, color: muted, borderRadius: "8px", padding: "6px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "0.75rem" }}>
-                  <Pencil size={12}/> Editar
-                </button>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div>
+                <h1 style={{ fontFamily: "'Bangers','Impact',cursive", fontSize: "2rem", color: T.accent(dark), margin: "0 0 4px 0" }}>{state.guild.name}</h1>
+                <p style={{ color: T.muted(dark), margin: 0 }}>{state.guild.motto}</p>
               </div>
-              {state.guild.announcement && (
-                <div style={{ marginTop: "14px", background: dark ? "rgba(255,215,0,0.08)" : "rgba(204,0,0,0.06)", border: `1px solid ${border}`, borderRadius: "10px", padding: "10px 14px", fontSize: "0.85rem", color: text }}>
-                  📢 {state.guild.announcement}
-                </div>
-              )}
+              <button onClick={() => setEditingGuild(true)} style={{ background: "none", border: "none", color: T.muted(dark), cursor: "pointer" }}><Pencil size={14}/></button>
             </div>
           )}
         </div>
-
-        {/* Stats row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", borderTop: `1px solid ${border}` }}>
-          {[
-            { icon: <Users size={18}/>, label: "Treinadores", value: state.players.length },
-            { icon: <Swords size={18}/>, label: "Torneios", value: state.tournaments.length },
-            { icon: <Trophy size={18}/>, label: "Títulos", value: totalTitles },
-          ].map((s, i) => (
-            <div key={i} style={{ padding: "14px", textAlign: "center", borderRight: i < 2 ? `1px solid ${border}` : "none" }}>
-              <div style={{ color: accent, marginBottom: "4px", display: "flex", justifyContent: "center" }}>{s.icon}</div>
-              <div style={{ color: text, fontWeight: 700, fontSize: "1.3rem" }}>{s.value}</div>
-              <div style={{ color: muted, fontSize: "0.72rem" }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
       </div>
 
-      {/* Active tournaments */}
+      {/* Ranking Oficial */}
       <div style={{ ...T.card(dark), overflow: "hidden" }}>
-        <SectionHeader icon="⚡" title="Torneios Ativos" dark={dark}
-          right={<Btn onClick={onNewTournament} style={{ fontSize: "0.8rem", padding: "6px 12px" }}><Plus size={14}/> Novo Torneio</Btn>}
+        <SectionHeader 
+          icon="🏆" 
+          title="Ranking Oficial (Pontuação)" 
+          dark={dark} 
+          right={
+            <button onClick={onResetSeason} style={{ background: "none", border: `1px solid rgba(239,68,68,0.4)`, color: "#ef4444", borderRadius: "8px", padding: "4px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", fontSize: "0.75rem" }}>
+              <Trash2 size={12}/> Zerar Ranking
+            </button>
+          }
         />
-        <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
-          {active.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "24px", color: muted }}>
-              <div style={{ fontSize: "2.5rem", marginBottom: "8px" }}>⚔️</div>
-              <p style={{ margin: 0, fontSize: "0.9rem" }}>Nenhum torneio ativo.</p>
-              <button onClick={onNewTournament} style={{ marginTop: "12px", background: "none", border: `1px solid ${border}`, color: accent, borderRadius: "10px", padding: "8px 18px", cursor: "pointer", fontSize: "0.85rem" }}>
-                Criar primeiro torneio
-              </button>
+        <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "8px" }}>
+          {ranking.slice(0, 10).map((p, i) => (
+            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: "12px", background: dark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)", padding: "10px 14px", borderRadius: "10px" }}>
+              <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: i === 0 ? "#FFD700" : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : T.muted(dark), width: "24px", textAlign: "center" }}>
+                {i + 1}º
+              </div>
+              <PokemonSprite pokeId={p.pokeId} size={32} />
+              <div style={{ flex: 1, color: T.text(dark), fontWeight: 600 }}>{p.nick}</div>
+              <div style={{ background: T.accent(dark), color: "#000", padding: "4px 10px", borderRadius: "20px", fontSize: "0.85rem", fontWeight: "bold", display: "flex", alignItems: "center", gap: "4px" }}>
+                <Medal size={14}/> {p.points || 0} pts
+              </div>
             </div>
-          ) : active.map(t => (
-            <TournamentCard key={t.id} t={t} players={state.players} dark={dark} onSetActive={() => onSetActive(t.id)} onDelete={() => onDeleteTournament(t.id)} />
+          ))}
+          {ranking.length === 0 && (
+            <div style={{ textAlign: "center", color: T.muted(dark), padding: "10px" }}>
+              Nenhum jogador registrado ainda.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Torneios Ativos */}
+      <div style={{ ...T.card(dark), overflow: "hidden" }}>
+        <SectionHeader icon="⚡" title="Torneios Ativos" dark={dark} right={<Btn onClick={onNewTournament} style={{ fontSize: "0.8rem", padding: "6px 12px" }}><Plus size={14}/> Novo Torneio</Btn>} />
+        <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+          {active.length === 0 && <div style={{ textAlign: "center", color: T.muted(dark) }}>Nenhum torneio ativo no momento.</div>}
+          {active.map(t => <TournamentCard key={t.id} t={t} players={state.players} dark={dark} onSetActive={() => onSetActive(t.id)} onDelete={() => onDeleteTournament(t.id)} />)}
+        </div>
+      </div>
+
+      {/* Histórico de Torneios Encerrados */}
+      <div style={{ ...T.card(dark), overflow: "hidden" }}>
+        <SectionHeader icon="📜" title="Histórico de Torneios" dark={dark} />
+        <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+          {finished.length === 0 && <div style={{ textAlign: "center", color: T.muted(dark) }}>Nenhum torneio encerrado no histórico.</div>}
+          {finished.slice().reverse().map(t => (
+            <TournamentCard key={t.id} t={t} players={state.players} dark={dark} onSetActive={() => {}} onDelete={() => onDeleteTournament(t.id)} />
           ))}
         </div>
       </div>
 
-      {/* History */}
-      {finished.length > 0 && (
-        <div style={{ ...T.card(dark), overflow: "hidden" }}>
-          <SectionHeader icon="📜" title="Histórico" dark={dark} />
-          <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
-            {finished.slice().reverse().map(t => (
-              <TournamentCard key={t.id} t={t} players={state.players} dark={dark} onSetActive={() => {}} onDelete={() => onDeleteTournament(t.id)} />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

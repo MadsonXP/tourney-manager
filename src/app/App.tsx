@@ -13,7 +13,6 @@ import { BracketPage }        from "./pages/BracketPage";
 
 type Tab = "guild" | "players" | "tournament";
 
-// ─── Pokébola background ─────────────────────────────────────────────────────
 const PokeballBg = () => (
   <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg"
        style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", zIndex: 0, opacity: 0.035, pointerEvents: "none" }}
@@ -33,7 +32,6 @@ const PokeballBg = () => (
   </svg>
 );
 
-// ─── Pikachu header ───────────────────────────────────────────────────────────
 function PikachuHeader() {
   const [sprite, setSprite] = useState<string | null>(null);
   useEffect(() => { fetchSprite(25).then(s => { if (s) setSprite(s); }); }, []);
@@ -56,23 +54,19 @@ export default function App() {
     ? state.tournaments.find(t => t.id === state.activeTournamentId) ?? null
     : null;
 
-  // ─── Guild ────────────────────────────────────────────────────────────────
   const updateGuild = (guild: AppState["guild"]) => setState(s => ({ ...s, guild }));
 
-  // ─── Players ─────────────────────────────────────────────────────────────
   const addPlayer = (nick: string, pokeId: number) => {
     const id = crypto.randomUUID();
-    setState(s => ({ ...s, players: [...s.players, { id, nick, pokeId, totalWins: 0, totalLosses: 0, titles: 0 }] }));
+    setState(s => ({ ...s, players: [...s.players, { id, nick, pokeId, totalWins: 0, totalLosses: 0, titles: 0, points: 0 }] }));
   };
   const removePlayer = (id: string) => setState(s => ({ ...s, players: s.players.filter(p => p.id !== id) }));
   const editPlayer = (id: string, nick: string, pokeId: number) =>
     setState(s => ({ ...s, players: s.players.map(p => p.id === id ? { ...p, nick, pokeId } : p) }));
 
-  // ─── Tournament creation ─────────────────────────────────────────────────
   const createTournament = (name: string, mode: "roundrobin" | "bracket", playerIds: string[]) => {
     const id = crypto.randomUUID();
     const snap = playerIds.map(pid => { const p = state.players.find(pl => pl.id === pid)!; return { id: pid, nick: p.nick, pokeId: p.pokeId }; });
-
     let t: Tournament = { id, name, mode, playerIds, status: "active", createdAt: new Date().toISOString(), playerSnap: snap };
 
     if (mode === "roundrobin") {
@@ -83,13 +77,11 @@ export default function App() {
       t.bracketMatches = generateBracket(playerIds);
       t.bracketSize    = t.bracketMatches.length;
     }
-
     setState(s => ({ ...s, tournaments: [...s.tournaments, t], activeTournamentId: id }));
     setShowModal(false);
     setTab("tournament");
   };
 
-  // ─── RR results ──────────────────────────────────────────────────────────
   const setRRResult = (rowId: string, colId: string, result: "V" | "D" | null) => {
     if (!activeTournament || activeTournament.mode !== "roundrobin") return;
     setState(s => ({
@@ -106,67 +98,123 @@ export default function App() {
     }));
   };
 
-  // ─── Bracket ──────────────────────────────────────────────────────────────
   const setBracketWinner = (matchId: string, winnerId: string) => {
     if (!activeTournament || activeTournament.mode !== "bracket") return;
     setState(s => ({
-      ...s,
-      tournaments: s.tournaments.map(t => {
-        if (t.id !== activeTournament.id) return t;
-        return { ...t, bracketMatches: advanceBracket(t.bracketMatches ?? [], matchId, winnerId) };
-      })
+      ...s, tournaments: s.tournaments.map(t => t.id === activeTournament.id ? { ...t, bracketMatches: advanceBracket(t.bracketMatches ?? [], matchId, winnerId) } : t)
     }));
   };
 
   const unsetBracketWinner = (matchId: string) => {
     if (!activeTournament || activeTournament.mode !== "bracket") return;
     setState(s => ({
-      ...s,
-      tournaments: s.tournaments.map(t => {
-        if (t.id !== activeTournament.id) return t;
-        return { ...t, bracketMatches: unsetBracketWinnerCascade(t.bracketMatches ?? [], matchId) };
-      })
+      ...s, tournaments: s.tournaments.map(t => t.id === activeTournament.id ? { ...t, bracketMatches: unsetBracketWinnerCascade(t.bracketMatches ?? [], matchId) } : t)
     }));
   };
 
+  // 1. CORREÇÃO NA EXCLUSÃO: Agora subtrai os pontos se o torneio já estava finalizado
   const deleteTournament = (id: string) => {
-    setState(s => ({
-      ...s,
-      tournaments: s.tournaments.filter(t => t.id !== id),
-      activeTournamentId: s.activeTournamentId === id ? null : s.activeTournamentId,
-    }));
+    setState(s => {
+      const t = s.tournaments.find(x => x.id === id);
+      if (!t) return s;
+
+      let updatedPlayers = s.players;
+
+      if (t.status === "finished") {
+        updatedPlayers = s.players.map(p => {
+          if (!t.playerIds.includes(p.id)) return p;
+          
+          let wins = 0, losses = 0, earnedPoints = 0, earnedTitle = 0;
+
+          if (t.mode === "roundrobin" && t.rrResults) {
+            const scores = t.playerIds.map(pid => {
+              const r = t.rrResults![pid] ?? {};
+              return { id: pid, wins: Object.values(r).filter(v => v === "V").length };
+            }).sort((a, b) => b.wins - a.wins);
+            
+            if (scores[0]?.id === p.id) { earnedPoints = 3; earnedTitle = 1; }
+            else if (scores[1]?.id === p.id) earnedPoints = 2;
+            else if (scores[2]?.id === p.id) earnedPoints = 1;
+
+            const r = t.rrResults[p.id] ?? {};
+            wins = Object.values(r).filter(v => v === "V").length;
+            losses = Object.values(r).filter(v => v === "D").length;
+
+          } else if (t.mode === "bracket" && t.bracketMatches) {
+            const maxR = Math.max(...t.bracketMatches.map(m => m.round));
+            const finalMatch = t.bracketMatches.find(m => m.round === maxR);
+            const semiMatches = t.bracketMatches.filter(m => m.round === maxR - 1);
+
+            if (finalMatch?.winnerId === p.id) { earnedPoints = 3; earnedTitle = 1; }
+            else if (finalMatch?.loserId === p.id) earnedPoints = 2;
+            else if (semiMatches.some(m => m.loserId === p.id)) earnedPoints = 1;
+
+            wins = t.bracketMatches.filter(m => m.winnerId === p.id).length;
+            losses = t.bracketMatches.filter(m => m.loserId === p.id).length;
+          }
+
+          return { 
+            ...p, 
+            totalWins: Math.max(0, p.totalWins - wins), 
+            totalLosses: Math.max(0, p.totalLosses - losses), 
+            titles: Math.max(0, p.titles - earnedTitle),
+            points: Math.max(0, (p.points || 0) - earnedPoints)
+          };
+        });
+      }
+
+      return {
+        ...s,
+        players: updatedPlayers,
+        tournaments: s.tournaments.filter(x => x.id !== id),
+        activeTournamentId: s.activeTournamentId === id ? null : s.activeTournamentId,
+      };
+    });
   };
 
-  // ─── Finish tournament ────────────────────────────────────────────────────
   const finishTournament = () => {
     if (!activeTournament) return;
     setState(s => {
-      let champId: string | null = null;
       const t = s.tournaments.find(t => t.id === activeTournament.id)!;
+      let champId: string | null = null;
 
-      if (t.mode === "roundrobin" && t.rrResults) {
-        const scores = t.playerIds.map(id => {
-          const wins = Object.values(t.rrResults![id] ?? {}).filter(v => v === "V").length;
-          return { id, wins };
-        }).sort((a, b) => b.wins - a.wins);
-        champId = scores[0]?.id ?? null;
-      } else if (t.mode === "bracket" && t.bracketMatches) {
-        champId = getBracketWinner(t.bracketMatches);
-      }
-
-      // Update player stats
       const updatedPlayers = s.players.map(p => {
         if (!t.playerIds.includes(p.id)) return p;
-        let wins = 0, losses = 0;
+        let wins = 0, losses = 0, earnedPoints = 0, earnedTitle = 0;
+
         if (t.mode === "roundrobin" && t.rrResults) {
+          const scores = t.playerIds.map(id => {
+            const r = t.rrResults![id] ?? {};
+            return { id, wins: Object.values(r).filter(v => v === "V").length };
+          }).sort((a, b) => b.wins - a.wins);
+          
+          if (scores[0]?.id === p.id) { earnedPoints = 3; earnedTitle = 1; champId = p.id; }
+          else if (scores[1]?.id === p.id) earnedPoints = 2;
+          else if (scores[2]?.id === p.id) earnedPoints = 1;
+
           const r = t.rrResults[p.id] ?? {};
-          wins   = Object.values(r).filter(v => v === "V").length;
+          wins = Object.values(r).filter(v => v === "V").length;
           losses = Object.values(r).filter(v => v === "D").length;
+
         } else if (t.mode === "bracket" && t.bracketMatches) {
-          wins   = t.bracketMatches.filter(m => m.winnerId === p.id).length;
-          losses = t.bracketMatches.filter(m => m.loserId  === p.id).length;
+          const maxR = Math.max(...t.bracketMatches.map(m => m.round));
+          const finalMatch = t.bracketMatches.find(m => m.round === maxR);
+          const semiMatches = t.bracketMatches.filter(m => m.round === maxR - 1);
+
+          champId = finalMatch?.winnerId ?? null;
+
+          if (finalMatch?.winnerId === p.id) { earnedPoints = 3; earnedTitle = 1; }
+          else if (finalMatch?.loserId === p.id) earnedPoints = 2;
+          else if (semiMatches.some(m => m.loserId === p.id)) earnedPoints = 1;
+
+          wins = t.bracketMatches.filter(m => m.winnerId === p.id).length;
+          losses = t.bracketMatches.filter(m => m.loserId === p.id).length;
         }
-        return { ...p, totalWins: p.totalWins + wins, totalLosses: p.totalLosses + losses, titles: p.titles + (champId === p.id ? 1 : 0) };
+
+        return { 
+          ...p, totalWins: p.totalWins + wins, totalLosses: p.totalLosses + losses, 
+          titles: p.titles + earnedTitle, points: (p.points || 0) + earnedPoints
+        };
       });
 
       const updatedTournaments = s.tournaments.map(t2 =>
@@ -176,6 +224,16 @@ export default function App() {
       return { ...s, players: updatedPlayers, tournaments: updatedTournaments, activeTournamentId: null };
     });
     setTab("guild");
+  };
+
+  // 2. NOVA FUNÇÃO: ZERAR RANKING MENSAL (Limpa fantasmas atuais)
+  const resetSeason = () => {
+    if (confirm("Tem certeza que deseja ZERAR o ranking atual? Os pontos e vitórias de todos os jogadores voltarão a 0. (O histórico de torneios NÃO será apagado).")) {
+      setState(s => ({
+        ...s,
+        players: s.players.map(p => ({ ...p, totalWins: 0, totalLosses: 0, titles: 0, points: 0 }))
+      }));
+    }
   };
 
   const accent = T.accent(dark);
@@ -197,16 +255,13 @@ export default function App() {
       }}>
         <PokeballBg />
 
-        {/* Glow blobs */}
         <div style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none", overflow: "hidden" }}>
           {[...Array(4)].map((_, i) => (
             <div key={i} style={{ position: "absolute", borderRadius: "50%", background: "radial-gradient(circle,rgba(250,204,21,0.1) 0%,transparent 70%)", width: `${160 + i * 80}px`, height: `${160 + i * 80}px`, top: `${[8,65,20,78][i]}%`, left: `${[5,82,48,14][i]}%`, transform: "translate(-50%,-50%)" }} />
           ))}
         </div>
 
-        <div style={{ position: "relative", zIndex: 10, maxWidth: "960px", margin: "0 auto", padding: "20px 14px 80px" }}>
-
-          {/* Header */}
+        <div style={{ position: "relative", zIndex: 10, maxWidth: "1200px", margin: "0 auto", padding: "20px 14px 80px" }}>
           <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px", gap: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
               <PikachuHeader />
@@ -227,8 +282,8 @@ export default function App() {
             </div>
           </header>
 
-          {/* Tab content */}
-          {tab === "guild"      && <GuildPage state={state} dark={dark} onUpdateGuild={updateGuild} onSetActive={id => { setState(s => ({ ...s, activeTournamentId: id })); setTab("tournament"); }} onNewTournament={() => setShowModal(true)} onDeleteTournament={deleteTournament} />}
+          {/* Passando o resetSeason para a GuildPage */}
+          {tab === "guild"      && <GuildPage state={state} dark={dark} onUpdateGuild={updateGuild} onSetActive={id => { setState(s => ({ ...s, activeTournamentId: id })); setTab("tournament"); }} onNewTournament={() => setShowModal(true)} onDeleteTournament={deleteTournament} onResetSeason={resetSeason} />}
           {tab === "players"    && <PlayersPage players={state.players} dark={dark} onAdd={addPlayer} onRemove={removePlayer} onEdit={editPlayer} />}
           {tab === "tournament" && !activeTournament && (
             <div style={{ textAlign: "center", padding: "60px 20px" }}>
@@ -247,9 +302,8 @@ export default function App() {
           )}
         </div>
 
-        {/* Bottom nav */}
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50 }}>
-          <div style={{ maxWidth: "960px", margin: "0 auto", padding: "0 14px 8px" }}>
+          <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "0 14px 8px" }}>
             <div style={{ ...T.card(dark), display: "flex", overflow: "hidden", padding: 0 }}>
               {TABS.map(t => {
                 const active = tab === t.key;
@@ -274,7 +328,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* New tournament modal */}
       {showModal && (
         <NewTournamentModal players={state.players} dark={dark} onConfirm={createTournament} onClose={() => setShowModal(false)} />
       )}

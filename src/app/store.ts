@@ -7,6 +7,7 @@ export type Player = {
   totalWins: number;
   totalLosses: number;
   titles: number;
+  points: number; // NOVO: Pontuação do ranking da guilda
 };
 
 export type MatchResult = "A" | "B" | null;
@@ -55,17 +56,17 @@ export type AppState = {
 // ─── Default State ────────────────────────────────────────────────────────────
 
 const DEFAULT_PLAYERS: Player[] = [
-  { id: "p1",  nick: "HunterXP00",   pokeId: 25,  totalWins: 0, totalLosses: 0, titles: 0 },
-  { id: "p2",  nick: "smaug",        pokeId: 6,   totalWins: 0, totalLosses: 0, titles: 0 },
-  { id: "p3",  nick: "Kaio10292929", pokeId: 9,   totalWins: 0, totalLosses: 0, titles: 0 },
-  { id: "p4",  nick: "Rino",         pokeId: 3,   totalWins: 0, totalLosses: 0, titles: 0 },
-  { id: "p5",  nick: "Alucard",      pokeId: 94,  totalWins: 0, totalLosses: 0, titles: 0 },
-  { id: "p6",  nick: "Dc_carlos",    pokeId: 133, totalWins: 0, totalLosses: 0, titles: 0 },
-  { id: "p7",  nick: "Kirito_11",    pokeId: 448, totalWins: 0, totalLosses: 0, titles: 0 },
-  { id: "p8",  nick: "Guaxinim",     pokeId: 143, totalWins: 0, totalLosses: 0, titles: 0 },
-  { id: "p9",  nick: "Pesadelo",     pokeId: 196, totalWins: 0, totalLosses: 0, titles: 0 },
-  { id: "p10", nick: "MGoncalves",   pokeId: 197, totalWins: 0, totalLosses: 0, titles: 0 },
-  { id: "p11", nick: "Aípedro",      pokeId: 149, totalWins: 0, totalLosses: 0, titles: 0 },
+  { id: "p1",  nick: "HunterXP00",   pokeId: 25,  totalWins: 0, totalLosses: 0, titles: 0, points: 0 },
+  { id: "p2",  nick: "smaug",        pokeId: 6,   totalWins: 0, totalLosses: 0, titles: 0, points: 0 },
+  { id: "p3",  nick: "Kaio10292929", pokeId: 9,   totalWins: 0, totalLosses: 0, titles: 0, points: 0 },
+  { id: "p4",  nick: "Rino",         pokeId: 3,   totalWins: 0, totalLosses: 0, titles: 0, points: 0 },
+  { id: "p5",  nick: "Alucard",      pokeId: 94,  totalWins: 0, totalLosses: 0, titles: 0, points: 0 },
+  { id: "p6",  nick: "Dc_carlos",    pokeId: 133, totalWins: 0, totalLosses: 0, titles: 0, points: 0 },
+  { id: "p7",  nick: "Kirito_11",    pokeId: 448, totalWins: 0, totalLosses: 0, titles: 0, points: 0 },
+  { id: "p8",  nick: "Guaxinim",     pokeId: 143, totalWins: 0, totalLosses: 0, titles: 0, points: 0 },
+  { id: "p9",  nick: "Pesadelo",     pokeId: 196, totalWins: 0, totalLosses: 0, titles: 0, points: 0 },
+  { id: "p10", nick: "MGoncalves",   pokeId: 197, totalWins: 0, totalLosses: 0, titles: 0, points: 0 },
+  { id: "p11", nick: "Aípedro",      pokeId: 149, totalWins: 0, totalLosses: 0, titles: 0, points: 0 },
 ];
 
 export const DEFAULT_STATE: AppState = {
@@ -103,23 +104,18 @@ export function generateBracket(playerIds: string[]): BracketMatch[] {
   const matches: BracketMatch[] = [];
   const shuffled = [...playerIds].sort(() => Math.random() - 0.5);
 
-  // Distribuir BYEs de forma inteligente: evita que jogadores enfrentem BYEs seguidos
   const slots = new Array(size).fill(null);
   let pIdx = 0;
-  // Preenche primeiro o Jogador A de cada luta
   for (let i = 0; i < size; i += 2) { if (pIdx < shuffled.length) slots[i] = shuffled[pIdx++]; }
-  // Preenche o Jogador B com quem sobrou (os espaços vazios viram BYEs)
   for (let i = 1; i < size; i += 2) { if (pIdx < shuffled.length) slots[i] = shuffled[pIdx++]; }
 
-  // Criar Round 1
   for (let i = 0; i < size / 2; i++) {
     const pA = slots[i * 2];
     const pB = slots[i * 2 + 1];
-    const winnerId = pA === null ? pB : pB === null ? pA : null; // Se um lado for null, o outro ganha automático
+    const winnerId = pA === null ? pB : pB === null ? pA : null;
     matches.push({ id: `r1-${i}`, round: 1, position: i, playerAId: pA, playerBId: pB, winnerId, loserId: null });
   }
 
-  // Criar demais Rounds
   for (let r = 2; r <= rounds; r++) {
     const matchesInRound = size / Math.pow(2, r);
     for (let i = 0; i < matchesInRound; i++) {
@@ -127,7 +123,6 @@ export function generateBracket(playerIds: string[]): BracketMatch[] {
     }
   }
 
-  // Mágica: Empurrar os vencedores de BYE do Round 1 direto para o Round 2
   const r1Matches = matches.filter(m => m.round === 1);
   for (const m of r1Matches) {
     if (m.winnerId) {
@@ -138,7 +133,6 @@ export function generateBracket(playerIds: string[]): BracketMatch[] {
         if (m.position % 2 === 0) nextMatch.playerAId = m.winnerId;
         else nextMatch.playerBId = m.winnerId;
         
-        // Se ambos caírem de BYE, avança de novo
         if (nextMatch.playerAId && nextMatch.playerBId === null) { nextMatch.winnerId = nextMatch.playerAId; }
         else if (nextMatch.playerBId && nextMatch.playerAId === null) { nextMatch.winnerId = nextMatch.playerBId; }
       }
@@ -146,7 +140,6 @@ export function generateBracket(playerIds: string[]): BracketMatch[] {
   }
 
   return matches;
-
 }
 
 export function advanceBracket(matches: BracketMatch[], matchId: string, winnerId: string): BracketMatch[] {
@@ -158,7 +151,6 @@ export function advanceBracket(matches: BracketMatch[], matchId: string, winnerI
   match.winnerId = winnerId;
   match.loserId = loserId;
 
-  // Encontra a próxima luta do chaveamento
   const nextRound = match.round + 1;
   const nextPosition = Math.floor(match.position / 2);
   const nextMatch = updated.find(m => m.round === nextRound && m.position === nextPosition);
@@ -166,17 +158,11 @@ export function advanceBracket(matches: BracketMatch[], matchId: string, winnerI
   if (nextMatch) {
     if (match.position % 2 === 0) nextMatch.playerAId = winnerId;
     else nextMatch.playerBId = winnerId;
-    
-    // CORREÇÃO: Removemos as linhas que davam vitória automática prematura aqui!
   }
 
   return updated;
 }
 
-/**
- * Recursively clears a match result AND all downstream matches that depend on it.
- * This ensures hierarchy: undoing R1 clears R2, R3, etc. that had that winner.
- */
 export function unsetBracketWinnerCascade(matches: BracketMatch[], matchId: string): BracketMatch[] {
   const updated = matches.map(m => ({ ...m }));
 
@@ -188,18 +174,14 @@ export function unsetBracketWinnerCascade(matches: BracketMatch[], matchId: stri
     match.winnerId = null;
     match.loserId = null;
 
-    // Find next round match and clear there too
     const nextRound = match.round + 1;
     const nextPosition = Math.floor(match.position / 2);
     const nextMatch = updated.find(m => m.round === nextRound && m.position === nextPosition);
 
     if (nextMatch) {
-      // Only cascade if the winner from THIS match is present in the next match
       if (nextMatch.playerAId === prevWinnerId || nextMatch.playerBId === prevWinnerId) {
-        // Clear the winner from next match's slots
         if (nextMatch.playerAId === prevWinnerId) nextMatch.playerAId = null;
         if (nextMatch.playerBId === prevWinnerId) nextMatch.playerBId = null;
-        // Recurse
         clearMatch(nextMatch.id);
       }
     }
