@@ -2,9 +2,9 @@ import { useRef, useState, useEffect } from "react";
 import { Download, CheckCircle } from "lucide-react";
 import type { Tournament, Player } from "../store";
 import { getBracketRounds, getBracketWinner, ROUND_NAMES } from "../store";
-import { T, SectionHeader, Btn } from "../components/Shared";
+import { T, SectionHeader, PokemonSprite, Btn } from "../components/Shared";
 import { fetchSprite } from "../components/PokemonPicker";
-import html2canvas from "html2canvas";
+import { toPng } from "html-to-image";
 
 type Props = { 
   tournament: Tournament; 
@@ -14,15 +14,6 @@ type Props = {
   onUnsetWinner: (matchId: string) => void; 
   onFinish: () => void; 
 };
-
-// Componente isolado para o Pokémon do Campeão para garantir o download seguro
-function ChampionImage({ pokeId }: { pokeId: number }) {
-  const [sprite, setSprite] = useState<string | null>(null);
-  useEffect(() => { fetchSprite(pokeId).then(s => { if (s) setSprite(s); }); }, [pokeId]);
-  
-  if (!sprite) return <div style={{ width: 48, height: 48 }} />;
-  return <img src={sprite} alt="Campeão" crossOrigin="anonymous" style={{ width: 48, height: 48, imageRendering: "pixelated" }} />;
-}
 
 function PlayerSlot({ playerId, players, playerSnap, dark, highlight }: { playerId: string | null; players: Player[]; playerSnap?: { id: string; nick: string; pokeId: number }[]; dark: boolean; highlight?: "winner" | "loser" }) {
   const p = playerId ? (players.find(pl => pl.id === playerId) ?? playerSnap?.find(pl => pl.id === playerId)) : null;
@@ -67,17 +58,20 @@ export function BracketPage({ tournament, players, dark, onSetWinner, onUnsetWin
   const exportBracket = async () => {
     if (!bracketRef.current) return;
     try {
-      const canvas = await html2canvas(bracketRef.current, { 
-        scale: 2, 
-        useCORS: true, 
-        backgroundColor: dark ? "#0f0c29" : "#fff8f0" 
+      const dataUrl = await toPng(bracketRef.current, { 
+        backgroundColor: dark ? "#0f0c29" : "#fff8f0",
+        pixelRatio: 2,
+        filter: (node) => {
+          if (node instanceof HTMLElement && node.dataset.ignore === "true") return false;
+          return true;
+        }
       });
       const link = document.createElement("a");
       link.download = `chaveamento-${tournament.name}.png`;
-      link.href = canvas.toDataURL("image/png");
+      link.href = dataUrl;
       link.click();
-    } catch (e) { 
-      alert("Erro ao gerar imagem. Tente novamente."); 
+    } catch (e: any) { 
+      alert("Erro ao gerar imagem: " + (e.message || "Tente novamente.")); 
     }
   };
 
@@ -89,7 +83,7 @@ export function BracketPage({ tournament, players, dark, onSetWinner, onUnsetWin
           <div style={{ fontSize: "3rem", marginBottom: "8px" }}>🏆</div>
           <div style={{ fontFamily: "'Bangers','Impact',cursive", fontSize: "1.6rem", color: "#FFD700" }}>CAMPEÃO!</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", marginTop: "8px" }}>
-            <ChampionImage pokeId={champion.pokeId} />
+            <PokemonSprite pokeId={champion.pokeId} size={48} />
             <span style={{ color: T.text(dark), fontSize: "1.2rem", fontWeight: 700 }}>{champion.nick}</span>
           </div>
           {!isFinished && (
@@ -102,20 +96,23 @@ export function BracketPage({ tournament, players, dark, onSetWinner, onUnsetWin
         </div>
       )}
 
-      <div style={{ ...T.card(dark), overflow: "hidden" }} ref={bracketRef}>
-        <SectionHeader 
-          icon="⚔️" 
-          title={`Chaveamento — ${tournament.name}`} 
-          dark={dark} 
-          right={
-            <button onClick={exportBracket} style={{ background: "none", border: `1px solid ${T.border(dark)}`, color: T.muted(dark), borderRadius: "8px", padding: "4px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", fontSize: "0.75rem" }}>
-              <Download size={12}/> PNG
-            </button>
-          } 
-        />
+      {/* Caixa do container com scroll (Oculta a barra na foto) */}
+      <div style={{ ...T.card(dark), overflowX: "auto", padding: 0 }}>
         
-        <div style={{ overflowX: "auto", padding: "30px 20px" }}>
-          <div style={{ display: "flex", gap: "40px", alignItems: "stretch", minWidth: "max-content" }}>
+        {/* Elemento que será fotografado */}
+        <div ref={bracketRef} style={{ padding: "24px", minWidth: "max-content", background: dark ? "#0f0c29" : "#fff8f0" }}>
+          <SectionHeader 
+            icon="⚔️" 
+            title={`Chaveamento — ${tournament.name}`} 
+            dark={dark} 
+            right={
+              <button data-ignore="true" onClick={exportBracket} style={{ background: "none", border: `1px solid ${T.border(dark)}`, color: T.muted(dark), borderRadius: "8px", padding: "4px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", fontSize: "0.75rem" }}>
+                <Download size={12}/> PNG
+              </button>
+            } 
+          />
+          
+          <div style={{ display: "flex", gap: "40px", alignItems: "stretch", minWidth: "max-content", marginTop: "20px" }}>
             {rounds.map((roundMatches, ri) => (
               <div key={ri} style={{ display: "flex", flexDirection: "column", minWidth: "200px" }}>
                 <div style={{ textAlign: "center", marginBottom: "20px" }}>
@@ -135,22 +132,19 @@ export function BracketPage({ tournament, players, dark, onSetWinner, onUnsetWin
                         {ri < totalR - 1 && <div style={{ position: "absolute", right: "-20px", top: "50%", width: "20px", height: "2px", background: T.border(dark), zIndex: 0 }} />}
                         {ri > 0 && <div style={{ position: "absolute", left: "-20px", top: "50%", width: "20px", height: "2px", background: T.border(dark), zIndex: 0 }} />}
                         
-                        {/* Jogador A */}
                         <div onClick={() => canPlay && match.playerAId ? onSetWinner(match.id, match.playerAId) : undefined} style={{ cursor: canPlay ? "pointer" : "default", zIndex: 1, position: "relative" }}>
                           <PlayerSlot playerId={match.playerAId} players={players} playerSnap={tournament.playerSnap} dark={dark} highlight={match.winnerId === match.playerAId ? "winner" : match.loserId === match.playerAId ? "loser" : undefined} />
                         </div>
                         
-                        {/* VS e Botão de Voltar */}
                         <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "2px 6px" }}>
                           <div style={{ flex: 1, height: "1px", background: T.border(dark) }} />
                           <span style={{ color: T.muted(dark), fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase" }}>{isBye ? "bye" : "vs"}</span>
                           <div style={{ flex: 1, height: "1px", background: T.border(dark) }} />
                           {match.winnerId && !isFinished && !isBye && (
-                            <button onClick={() => onUnsetWinner(match.id)} style={{ background: "none", border: `1px solid ${T.border(dark)}`, color: "#ef4444", borderRadius: "6px", padding: "2px 6px", cursor: "pointer", fontSize: "0.7rem", fontWeight: "bold" }}>↺</button>
+                            <button data-ignore="true" onClick={() => onUnsetWinner(match.id)} style={{ background: "none", border: `1px solid ${T.border(dark)}`, color: "#ef4444", borderRadius: "6px", padding: "2px 6px", cursor: "pointer", fontSize: "0.7rem", fontWeight: "bold" }}>↺</button>
                           )}
                         </div>
                         
-                        {/* Jogador B */}
                         <div onClick={() => canPlay && match.playerBId ? onSetWinner(match.id, match.playerBId) : undefined} style={{ cursor: canPlay ? "pointer" : "default", zIndex: 1, position: "relative" }}>
                           <PlayerSlot playerId={match.playerBId} players={players} playerSnap={tournament.playerSnap} dark={dark} highlight={match.winnerId === match.playerBId ? "winner" : match.loserId === match.playerBId ? "loser" : undefined} />
                         </div>
